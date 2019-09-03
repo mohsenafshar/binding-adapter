@@ -8,4 +8,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.SOURCE)
 @Target(ElementType.TYPE)
 public @interface AdapterAnnotation {
+
+    String adapterClassName() default "Adapter";
+
+    Class itemType();
+
+//    Class viewHolderClass() default ;
+
+    int layoutId() default 0;
 }

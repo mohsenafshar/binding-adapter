@@ -2,8 +2,11 @@ package ir.mohsenafshar.adaptercompiler;
 
 import com.google.auto.service.AutoService;
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.FieldSpec;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
+import com.squareup.javapoet.ParameterizedTypeName;
+import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 
 import java.io.IOException;
@@ -26,6 +29,7 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
@@ -41,8 +45,12 @@ import ir.mohsenafshar.adapterannotation.AdapterAnnotation;
 public class AdapterProcessor extends AbstractProcessor {
 
     private static final ClassName classContext = ClassName.get("android.content", "Context");
+    private static final ClassName classList = ClassName.get("android.content", "Context");
     private static final ClassName classBundle = ClassName.get("android.os", "Bundle");
     private static final ClassName classAdapter = ClassName.get("androidx.recyclerview.widget", "Adapter");
+
+    private String qualifiedSuperClassName;
+    private String simpleTypeName;
 
     private Filer filer;
     private Messager messager;
@@ -113,6 +121,55 @@ public class AdapterProcessor extends AbstractProcessor {
                     prefix = string.replace("Fragment", "");
                 }
 
+                TypeElement typeElement = (TypeElement) element;
+                AdapterAnnotation annotation = typeElement.getAnnotation(AdapterAnnotation.class);
+                String adapterClassName = annotation.adapterClassName();
+                int layoutId = annotation.layoutId();
+                //Class itemType = annotation.itemType();
+
+                messager.printMessage(Diagnostic.Kind.WARNING, adapterClassName);
+                messager.printMessage(Diagnostic.Kind.WARNING, String.valueOf(layoutId));
+//                messager.printMessage(Diagnostic.Kind.WARNING, itemClass.getCanonicalName());
+                try {
+                    Class<?> clazz = annotation.itemType();
+                    qualifiedSuperClassName = clazz.getCanonicalName();
+                    simpleTypeName = clazz.getSimpleName();
+                } catch (MirroredTypeException mte) {
+                    DeclaredType classTypeMirror = (DeclaredType) mte.getTypeMirror();
+                    TypeElement classTypeElement = (TypeElement) classTypeMirror.asElement();
+                    qualifiedSuperClassName = classTypeElement.getQualifiedName().toString();
+                    simpleTypeName = classTypeElement.getSimpleName().toString();
+                }
+
+                messager.printMessage(Diagnostic.Kind.WARNING, qualifiedSuperClassName);
+                messager.printMessage(Diagnostic.Kind.WARNING, simpleTypeName);
+
+
+                TypeElement superClassElement = elementUtils.getTypeElement(qualifiedSuperClassName);
+                (TypeElement) typeUtils.asElement(superClassType);
+
+
+                TypeSpec.Builder classBuilder = TypeSpec.classBuilder(adapterClassName)
+                        .addModifiers(Modifier.PUBLIC);
+
+                MethodSpec.Builder context = MethodSpec.constructorBuilder()
+                        .addModifiers(Modifier.PUBLIC)
+                        .addParameter(classContext, "context");
+
+                classBuilder.addMethod(context.build());
+
+                ClassName missingFeature = ClassName.get(String.class);
+                ClassName list = ClassName.get("java.util", "List");
+                ClassName arrayList = ClassName.get("java.util", "ArrayList");
+                TypeName listOfFeatures = ParameterizedTypeName.get(list, missingFeature);
+
+                FieldSpec missingFeatures = FieldSpec.builder(listOfFeatures, "itemList")
+                        .addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+                        .initializer("new $T<>()", arrayList)
+                        .build();
+
+                classBuilder.addField(missingFeatures);
+
                 /*TypeElement typeElement = (TypeElement) element;
                 activitiesWithPackage.put(
                         typeElement.getSimpleName().toString(),
@@ -127,13 +184,15 @@ public class AdapterProcessor extends AbstractProcessor {
                 builder.addStatement("$L.startActivity(intent)", "context");
                 MethodSpec intentMethod = builder.build();
                 navigatorClass.addMethod(intentMethod);*/
+
+
+                JavaFile.builder("ir.mohsenafshar.adapters", classBuilder.build()).build().writeTo(filer);
             }
 
 
             /*
              * 3- Write generated class to a file
              */
-//            JavaFile.builder("ir.mohsenafshar.activitynavigator", navigatorClass.build()).build().writeTo(filer);
         } catch (Exception e) {
             e.printStackTrace();
         }

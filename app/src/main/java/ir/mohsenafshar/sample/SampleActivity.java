@@ -1,16 +1,14 @@
 package ir.mohsenafshar.sample;
 
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.RecyclerView;
-
 import android.os.Bundle;
 
-import java.lang.reflect.Array;
+import androidx.appcompat.app.AppCompatActivity;
+
 import java.util.ArrayList;
 
 import ir.mohsenafshar.adapterannotation.AdapterAnnotation;
 
-@AdapterAnnotation
+@AdapterAnnotation(adapterClassName = "MyAdapter", itemType = String.class, layoutId = R.layout.item_list)
 public class SampleActivity extends AppCompatActivity {
 
     public ArrayList<String> itemList = new ArrayList<>();
