@@ -11,6 +11,8 @@
             <option value="$PROJECT_DIR$/adapterannotation" />
             <option value="$PROJECT_DIR$/adaptercompiler" />
             <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/listener" />
+            <option value="$PROJECT_DIR$/listeners" />
           </set>
         </option>
         <option name="resolveModulePerSourceSet" value="false" />

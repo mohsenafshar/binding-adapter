@@ -1,2 +1,2 @@
-include ':app', ':adaptercompiler', ':adapterannotation'
+include ':app', ':adaptercompiler', ':adapterannotation', ':listeners', ':listeners', ':listener'
 rootProject.name='sample'

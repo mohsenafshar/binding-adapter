@@ -13,7 +13,7 @@ public @interface AdapterAnnotation {
 
     Class itemType();
 
-//    Class viewHolderClass() default ;
+    Class viewHolderClass();
 
     int layoutId() default 0;
 }

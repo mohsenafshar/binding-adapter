@@ -2,6 +2,7 @@ package ir.mohsenafshar.adaptercompiler;
 
 import com.google.auto.service.AutoService;
 import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.FieldSpec;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
@@ -10,6 +11,8 @@ import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +33,7 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.MirroredTypeException;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
@@ -43,11 +47,24 @@ import ir.mohsenafshar.adapterannotation.AdapterAnnotation;
 })
 @AutoService(Processor.class)
 public class AdapterProcessor extends AbstractProcessor {
+    private static final ClassName classInflater = ClassName.get("ir.mohsenafshar.sample", "LayInflater");
 
     private static final ClassName classContext = ClassName.get("android.content", "Context");
     private static final ClassName classList = ClassName.get("android.content", "Context");
     private static final ClassName classBundle = ClassName.get("android.os", "Bundle");
-    private static final ClassName classAdapter = ClassName.get("androidx.recyclerview.widget", "Adapter");
+    private static final ClassName list = ClassName.get("java.util", "List");
+    private static final ClassName arrayList = ClassName.get("java.util", "ArrayList");
+    private static final ClassName classInteger = ClassName.get("java.lang", "Integer");
+    private static final ClassName classView = ClassName.get("android.view", "View");
+    private static final ClassName classViewGroup = ClassName.get("android.view", "ViewGroup");
+    private static final ClassName classLayoutInflator = ClassName.get("android.view", "LayoutInflater");
+    private static final ClassName classOverrideAnnotation = ClassName.get("java.lang", "Override");
+    private static final ClassName classString = ClassName.get("java.lang", "String");
+    private static final ClassName classAdapter = ClassName.get("androidx.recyclerview.widget", "RecyclerView.Adapter");
+    private static final ClassName recyclerViewClass = ClassName.get("androidx.recyclerview.widget", "RecyclerView");
+    private static final ClassName itemClickClass = ClassName.get("ir.mohsenafshar.listener", "ItemClickListener");
+    private static final ClassName itemLongClass = ClassName.get("ir.mohsenafshar.listener", "ItemLongClickListener");
+//    private static final ClassName classAdapter = ClassName.get("androidx.recyclerview.widget", "Adapter");
 
     private String qualifiedSuperClassName;
     private String simpleTypeName;
@@ -121,69 +138,197 @@ public class AdapterProcessor extends AbstractProcessor {
                     prefix = string.replace("Fragment", "");
                 }
 
+                // get annotation values
                 TypeElement typeElement = (TypeElement) element;
                 AdapterAnnotation annotation = typeElement.getAnnotation(AdapterAnnotation.class);
                 String adapterClassName = annotation.adapterClassName();
                 int layoutId = annotation.layoutId();
-                //Class itemType = annotation.itemType();
 
                 messager.printMessage(Diagnostic.Kind.WARNING, adapterClassName);
                 messager.printMessage(Diagnostic.Kind.WARNING, String.valueOf(layoutId));
-//                messager.printMessage(Diagnostic.Kind.WARNING, itemClass.getCanonicalName());
+
+                TypeMirror listItemTypeTypeMirror = null;
+                Class<?> listItemClass = null;
                 try {
-                    Class<?> clazz = annotation.itemType();
-                    qualifiedSuperClassName = clazz.getCanonicalName();
-                    simpleTypeName = clazz.getSimpleName();
+                    listItemClass = annotation.itemType();
+                    qualifiedSuperClassName = listItemClass.getCanonicalName();
+                    simpleTypeName = listItemClass.getSimpleName();
                 } catch (MirroredTypeException mte) {
                     DeclaredType classTypeMirror = (DeclaredType) mte.getTypeMirror();
+                    listItemTypeTypeMirror = mte.getTypeMirror();
                     TypeElement classTypeElement = (TypeElement) classTypeMirror.asElement();
                     qualifiedSuperClassName = classTypeElement.getQualifiedName().toString();
                     simpleTypeName = classTypeElement.getSimpleName().toString();
                 }
 
+                TypeMirror viewHolderTypeMirror = null;
+                Class<?> viewHolderClass = null;
+                try {
+                    viewHolderClass = annotation.viewHolderClass();
+                } catch (MirroredTypeException mte) {
+                    viewHolderTypeMirror = mte.getTypeMirror();
+                }
+
                 messager.printMessage(Diagnostic.Kind.WARNING, qualifiedSuperClassName);
                 messager.printMessage(Diagnostic.Kind.WARNING, simpleTypeName);
 
+                // List<T>
+                TypeName listOfFeatures = ParameterizedTypeName.get(list,
+                        listItemClass == null ? ClassName.get(listItemTypeTypeMirror) : ClassName.get(listItemClass));
 
-                TypeElement superClassElement = elementUtils.getTypeElement(qualifiedSuperClassName);
-                (TypeElement) typeUtils.asElement(superClassType);
+                // RecyclerView.Adapter<ViewHolder>
+                TypeName adapterParametrized = ParameterizedTypeName.get(classAdapter,
+                        viewHolderClass == null ? ClassName.get(viewHolderTypeMirror) : ClassName.get(viewHolderClass));
 
-
+                // Class
                 TypeSpec.Builder classBuilder = TypeSpec.classBuilder(adapterClassName)
-                        .addModifiers(Modifier.PUBLIC);
-
-                MethodSpec.Builder context = MethodSpec.constructorBuilder()
                         .addModifiers(Modifier.PUBLIC)
-                        .addParameter(classContext, "context");
+                        .superclass(adapterParametrized);
 
-                classBuilder.addMethod(context.build());
+                // Constructor1
+                MethodSpec.Builder constructor1 = MethodSpec.constructorBuilder()
+                        .addModifiers(Modifier.PUBLIC)
+                        .addParameter(listOfFeatures, "list")
+                        .addStatement("itemList = $L", "list");
 
-                ClassName missingFeature = ClassName.get(String.class);
-                ClassName list = ClassName.get("java.util", "List");
-                ClassName arrayList = ClassName.get("java.util", "ArrayList");
-                TypeName listOfFeatures = ParameterizedTypeName.get(list, missingFeature);
+                classBuilder.addMethod(constructor1.build());
 
+                // Constructor2
+                MethodSpec.Builder constructor2 = MethodSpec.constructorBuilder()
+                        .addModifiers(Modifier.PRIVATE)
+                        .addParameter(listOfFeatures, "list")
+                        .addParameter(classContext, "context")
+                        .addStatement("$T rc = new $T($L)", recyclerViewClass, recyclerViewClass, "context")
+                        .addStatement("itemList = $L", "list");
+
+                classBuilder.addMethod(constructor2.build());
+
+                /*CodeBlock sumOfTenImpl = CodeBlock
+                        .builder()
+                        .addStatement("int sum = 0")
+                        .beginControlFlow("for (int i = 0; i <= 10; i++)")
+                        .addStatement("sum += i")
+                        .endControlFlow()
+                        .build();
+
+                MethodSpec sumOfTen = MethodSpec
+                        .methodBuilder("sumOfTen")
+                        .addCode(sumOfTenImpl)
+                        .build();*/
+
+
+                // Field List
                 FieldSpec missingFeatures = FieldSpec.builder(listOfFeatures, "itemList")
-                        .addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
+                        .addModifiers(Modifier.PRIVATE)
                         .initializer("new $T<>()", arrayList)
                         .build();
 
                 classBuilder.addField(missingFeatures);
 
-                /*TypeElement typeElement = (TypeElement) element;
-                activitiesWithPackage.put(
-                        typeElement.getSimpleName().toString(),
-                        elements.getPackageOf(typeElement).getQualifiedName().toString());
 
-                Navigate navigate = typeElement.getAnnotation(Navigate.class);
+                // public MyViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType)
+                MethodSpec createViewHolder = MethodSpec.methodBuilder("onCreateViewHolder")
+                        .addAnnotation(classOverrideAnnotation)
+                        .addModifiers(Modifier.PUBLIC)
+                        .returns(viewHolderClass == null ? ClassName.get(viewHolderTypeMirror) : ClassName.get(viewHolderClass))
+                        .addParameter(classViewGroup, "parent")
+                        .addParameter(TypeName.INT, "viewType")
+                        .addStatement("$T inflator = $T.from(parent.getContext())", classLayoutInflator, classLayoutInflator)
+                        .addStatement("$T view = $L.inflate($L, $L, false)", classView, "inflator", layoutId, "parent")
+                        .addStatement("return new $T($L)", viewHolderClass == null ? ClassName.get(viewHolderTypeMirror) : ClassName.get(viewHolderClass), "view")
+                        .build();
 
-                TypeSpec.Builder navigatorClass = TypeSpec.classBuilder("Navigator")
-                        .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
+                classBuilder.addMethod(createViewHolder);
 
 
-                builder.addStatement("$L.startActivity(intent)", "context");
-                MethodSpec intentMethod = builder.build();
-                navigatorClass.addMethod(intentMethod);*/
+                // public void onBindViewHolder(@NonNull MyViewHolder holder, int position)
+                MethodSpec bindViewHolder = MethodSpec.methodBuilder("onBindViewHolder")
+                        .addAnnotation(classOverrideAnnotation)
+                        .addModifiers(Modifier.PUBLIC)
+                        .addParameter(viewHolderClass == null ? ClassName.get(viewHolderTypeMirror) : ClassName.get(viewHolderClass), "holder")
+                        .addParameter(TypeName.INT, "position")
+                        .addStatement("$L.bind($L.get($L), $L)", "holder", "itemList", "position", "position")
+                        .build();
+
+                classBuilder.addMethod(bindViewHolder);
+
+
+                // public int getItemCount() {
+                MethodSpec getItemCount = MethodSpec.methodBuilder("getItemCount")
+                        .addAnnotation(classOverrideAnnotation)
+                        .addModifiers(Modifier.PUBLIC)
+                        .returns(TypeName.INT)
+                        .addStatement("return $L.size()", "itemList")
+                        .build();
+
+                classBuilder.addMethod(getItemCount);
+
+
+                // Class
+                TypeSpec.Builder innerClassBuilder = TypeSpec.classBuilder("Builder")
+                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
+
+                // Builder Constructor
+                MethodSpec.Builder innerClassConstructor = MethodSpec.constructorBuilder()
+                        .addModifiers(Modifier.PUBLIC)
+                        .addParameter(TypeName.INT, "layoutId");
+
+                innerClassBuilder.addMethod(innerClassConstructor.build());
+
+
+                // Builder Field List
+                FieldSpec builderItemList = FieldSpec.builder(listOfFeatures, "itemList")
+                        .addModifiers(Modifier.PRIVATE)
+                        .initializer("new $T<>()", arrayList)
+                        .build();
+
+                innerClassBuilder.addField(builderItemList);
+
+
+                // Builder ClickListener
+                FieldSpec builderItemClick = FieldSpec.builder(itemClickClass, "itemClickListener")
+                        .addModifiers(Modifier.PRIVATE)
+                        .build();
+
+                innerClassBuilder.addField(builderItemClick);
+
+
+                // Builder LongClickListener
+                FieldSpec builderLongItemClick = FieldSpec.builder(itemClickClass, "itemLongClickListener")
+                        .addModifiers(Modifier.PRIVATE)
+                        .build();
+
+                innerClassBuilder.addField(builderLongItemClick);
+
+//                public Builder setItemClickListener(ItemClickListener clickListener) {
+//                    this.clickListener = clickListener;
+//                    return this;
+//                }
+//
+//                public Builder setItemLongClickListener(ItemLongClickListener longClickListener) {
+//                    this.longClickListener = longClickListener;
+//                    return this;
+//                }
+
+
+                MethodSpec methodSpec = MethodSpec.methodBuilder("setItemClickListener")
+                        .addModifiers(Modifier.PUBLIC)
+                        .returns()
+                        .
+
+
+
+
+
+
+
+
+
+
+
+
+
+                classBuilder.addType(innerClassBuilder.build());
 
 
                 JavaFile.builder("ir.mohsenafshar.adapters", classBuilder.build()).build().writeTo(filer);
