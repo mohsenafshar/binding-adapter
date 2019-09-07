@@ -9,6 +9,8 @@ import java.util.ArrayList;
 
 import ir.mohsenafshar.adapterannotation.AdapterAnnotation;
 import ir.mohsenafshar.adapters.MyAdapter;
+import ir.mohsenafshar.listener.ItemClickListener;
+import ir.mohsenafshar.listener.ItemLongClickListener;
 
 @AdapterAnnotation(
         adapterClassName = "MyAdapter",
@@ -26,7 +28,16 @@ public class SampleActivity extends AppCompatActivity {
 
         LayoutInflater.from(getApplicationContext());
 
-        MyAdapter myAdapter = new MyAdapter(itemList);
-        Adapter build = new Adapter.Builder(itemList).build();
+        new MyAdapter.Builder(itemList).setItemClickListener(new ItemClickListener() {
+            @Override
+            public void itemClicked() {
+
+            }
+        }).setItemLongClickListener(new ItemLongClickListener() {
+            @Override
+            public void itemLongClicked() {
+
+            }
+        }).build();
     }
 }

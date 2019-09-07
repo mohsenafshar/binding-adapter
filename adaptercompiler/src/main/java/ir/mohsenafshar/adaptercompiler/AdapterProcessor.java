@@ -2,7 +2,6 @@ package ir.mohsenafshar.adaptercompiler;
 
 import com.google.auto.service.AutoService;
 import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.CodeBlock;
 import com.squareup.javapoet.FieldSpec;
 import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
@@ -10,12 +9,8 @@ import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 
-import java.io.IOException;
-import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import javax.annotation.processing.AbstractProcessor;
@@ -33,7 +28,6 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.MirroredTypeException;
-import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
@@ -61,6 +55,7 @@ public class AdapterProcessor extends AbstractProcessor {
     private static final ClassName classOverrideAnnotation = ClassName.get("java.lang", "Override");
     private static final ClassName classString = ClassName.get("java.lang", "String");
     private static final ClassName classAdapter = ClassName.get("androidx.recyclerview.widget", "RecyclerView.Adapter");
+
     private static final ClassName recyclerViewClass = ClassName.get("androidx.recyclerview.widget", "RecyclerView");
     private static final ClassName itemClickClass = ClassName.get("ir.mohsenafshar.listener", "ItemClickListener");
     private static final ClassName itemLongClass = ClassName.get("ir.mohsenafshar.listener", "ItemLongClickListener");
@@ -173,7 +168,7 @@ public class AdapterProcessor extends AbstractProcessor {
                 messager.printMessage(Diagnostic.Kind.WARNING, simpleTypeName);
 
                 // List<T>
-                TypeName listOfFeatures = ParameterizedTypeName.get(list,
+                TypeName parameterizedItemListTypeName = ParameterizedTypeName.get(list,
                         listItemClass == null ? ClassName.get(listItemTypeTypeMirror) : ClassName.get(listItemClass));
 
                 // RecyclerView.Adapter<ViewHolder>
@@ -187,44 +182,39 @@ public class AdapterProcessor extends AbstractProcessor {
 
                 // Constructor1
                 MethodSpec.Builder constructor1 = MethodSpec.constructorBuilder()
-                        .addModifiers(Modifier.PUBLIC)
-                        .addParameter(listOfFeatures, "list")
+                        .addModifiers(Modifier.PRIVATE)
+                        .addParameter(parameterizedItemListTypeName, "list")
                         .addStatement("itemList = $L", "list");
-
                 classBuilder.addMethod(constructor1.build());
 
                 // Constructor2
                 MethodSpec.Builder constructor2 = MethodSpec.constructorBuilder()
                         .addModifiers(Modifier.PRIVATE)
-                        .addParameter(listOfFeatures, "list")
+                        .addParameter(parameterizedItemListTypeName, "list")
                         .addParameter(classContext, "context")
                         .addStatement("$T rc = new $T($L)", recyclerViewClass, recyclerViewClass, "context")
                         .addStatement("itemList = $L", "list");
-
                 classBuilder.addMethod(constructor2.build());
 
-                /*CodeBlock sumOfTenImpl = CodeBlock
-                        .builder()
-                        .addStatement("int sum = 0")
-                        .beginControlFlow("for (int i = 0; i <= 10; i++)")
-                        .addStatement("sum += i")
-                        .endControlFlow()
-                        .build();
-
-                MethodSpec sumOfTen = MethodSpec
-                        .methodBuilder("sumOfTen")
-                        .addCode(sumOfTenImpl)
-                        .build();*/
-
-
                 // Field List
-                FieldSpec missingFeatures = FieldSpec.builder(listOfFeatures, "itemList")
+                FieldSpec missingFeatures = FieldSpec.builder(parameterizedItemListTypeName, "itemList")
                         .addModifiers(Modifier.PRIVATE)
                         .initializer("new $T<>()", arrayList)
                         .build();
-
                 classBuilder.addField(missingFeatures);
 
+
+                // ClickListener Field
+                FieldSpec builderItemClick = FieldSpec.builder(itemClickClass, "itemClickListener")
+                        .addModifiers(Modifier.PRIVATE)
+                        .build();
+                classBuilder.addField(builderItemClick);
+
+                // LongClickListener Field
+                FieldSpec builderLongItemClick = FieldSpec.builder(itemLongClass, "itemLongClickListener")
+                        .addModifiers(Modifier.PRIVATE)
+                        .build();
+                classBuilder.addField(builderLongItemClick);
 
                 // public MyViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType)
                 MethodSpec createViewHolder = MethodSpec.methodBuilder("onCreateViewHolder")
@@ -237,9 +227,7 @@ public class AdapterProcessor extends AbstractProcessor {
                         .addStatement("$T view = $L.inflate($L, $L, false)", classView, "inflator", layoutId, "parent")
                         .addStatement("return new $T($L)", viewHolderClass == null ? ClassName.get(viewHolderTypeMirror) : ClassName.get(viewHolderClass), "view")
                         .build();
-
                 classBuilder.addMethod(createViewHolder);
-
 
                 // public void onBindViewHolder(@NonNull MyViewHolder holder, int position)
                 MethodSpec bindViewHolder = MethodSpec.methodBuilder("onBindViewHolder")
@@ -249,9 +237,7 @@ public class AdapterProcessor extends AbstractProcessor {
                         .addParameter(TypeName.INT, "position")
                         .addStatement("$L.bind($L.get($L), $L)", "holder", "itemList", "position", "position")
                         .build();
-
                 classBuilder.addMethod(bindViewHolder);
-
 
                 // public int getItemCount() {
                 MethodSpec getItemCount = MethodSpec.methodBuilder("getItemCount")
@@ -260,66 +246,74 @@ public class AdapterProcessor extends AbstractProcessor {
                         .returns(TypeName.INT)
                         .addStatement("return $L.size()", "itemList")
                         .build();
-
                 classBuilder.addMethod(getItemCount);
 
-
-                // Class
+                // Builder Class
                 TypeSpec.Builder innerClassBuilder = TypeSpec.classBuilder("Builder")
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
 
                 // Builder Constructor
                 MethodSpec.Builder innerClassConstructor = MethodSpec.constructorBuilder()
                         .addModifiers(Modifier.PUBLIC)
-                        .addParameter(TypeName.INT, "layoutId");
-
+                        .addParameter(parameterizedItemListTypeName, "itemList")
+                        .addStatement("this.itemList = itemList");
                 innerClassBuilder.addMethod(innerClassConstructor.build());
 
-
-                // Builder Field List
-                FieldSpec builderItemList = FieldSpec.builder(listOfFeatures, "itemList")
+                // Builder List Field
+                FieldSpec builderListField = FieldSpec.builder(parameterizedItemListTypeName, "itemList")
                         .addModifiers(Modifier.PRIVATE)
                         .initializer("new $T<>()", arrayList)
                         .build();
+                innerClassBuilder.addField(builderListField);
 
-                innerClassBuilder.addField(builderItemList);
 
-
-                // Builder ClickListener
-                FieldSpec builderItemClick = FieldSpec.builder(itemClickClass, "itemClickListener")
+                // Builder ClickListener Field
+                /*FieldSpec builderItemClick = FieldSpec.builder(itemClickClass, "itemClickListener")
                         .addModifiers(Modifier.PRIVATE)
-                        .build();
-
+                        .build();*/
                 innerClassBuilder.addField(builderItemClick);
 
 
-                // Builder LongClickListener
-                FieldSpec builderLongItemClick = FieldSpec.builder(itemClickClass, "itemLongClickListener")
+                // Builder LongClickListener Field
+                /*FieldSpec builderLongItemClick = FieldSpec.builder(itemClickClass, "itemLongClickListener")
                         .addModifiers(Modifier.PRIVATE)
-                        .build();
-
+                        .build();*/
                 innerClassBuilder.addField(builderLongItemClick);
 
-//                public Builder setItemClickListener(ItemClickListener clickListener) {
-//                    this.clickListener = clickListener;
-//                    return this;
-//                }
-//
-//                public Builder setItemLongClickListener(ItemLongClickListener longClickListener) {
-//                    this.longClickListener = longClickListener;
-//                    return this;
-//                }
+
+                // Builder Class Type
+                String className = adapterClassName + "." + "Builder";
+                ClassName builderClassType = ClassName.get("ir.mohsenafshar.adapters", className);
 
 
-                MethodSpec methodSpec = MethodSpec.methodBuilder("setItemClickListener")
+                // ClickListener
+                MethodSpec setItemClickListener = MethodSpec.methodBuilder("setItemClickListener")
                         .addModifiers(Modifier.PUBLIC)
-                        .returns()
-                        .
+                        .addParameter(itemClickClass, "itemClickListener")
+                        .returns(builderClassType)
+                        .addStatement("this.itemClickListener = itemClickListener")
+                        .addStatement("return this").build();
+                innerClassBuilder.addMethod(setItemClickListener);
 
 
+                // LongClickListener
+                MethodSpec setItemLongClickListener = MethodSpec.methodBuilder("setItemLongClickListener")
+                        .addModifiers(Modifier.PUBLIC)
+                        .addParameter(itemLongClass, "itemLongClickListener")
+                        .returns(builderClassType)
+                        .addStatement("this.itemLongClickListener = itemLongClickListener")
+                        .addStatement("return this").build();
+                innerClassBuilder.addMethod(setItemLongClickListener);
 
 
+                // Adapter Class Type
+                ClassName adapterClassType = ClassName.get("ir.mohsenafshar.adapters", adapterClassName);
 
+                MethodSpec build = MethodSpec.methodBuilder("build")
+                        .addModifiers(Modifier.PUBLIC)
+                        .returns(adapterClassType)
+                        .addStatement("return new $T($L)", adapterClassType, "itemList").build();
+                innerClassBuilder.addMethod(build);
 
 
 
