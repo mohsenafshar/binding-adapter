@@ -70,6 +70,12 @@ public class AdapterProcessor extends AbstractProcessor {
     private Types typeUtils;
 
     private String prefix;
+    private String adapterClassName;
+    private TypeMirror listItemTypeTypeMirror;
+    private Class<?> listItemClass;
+    private TypeMirror viewHolderTypeMirror;
+    private Class<?> viewHolderClass;
+    private int layoutId;
 
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
@@ -105,6 +111,59 @@ public class AdapterProcessor extends AbstractProcessor {
     *
     * */
 
+    private void log(String value) {
+        messager.printMessage(Diagnostic.Kind.WARNING, value);
+    }
+
+    private void logSuperType(Element element) {
+        TypeMirror typeMirror = element.asType();
+        List<? extends TypeMirror> mirrors = typeUtils.directSupertypes(typeMirror);
+        for (TypeMirror mirror : mirrors) {
+            DeclaredType declared = (DeclaredType)mirror; //you should of course check this is possible first
+            Element supertypeElement = declared.asElement();
+            System.out.println( "Supertype name: " + supertypeElement.getSimpleName() );
+            messager.printMessage(Diagnostic.Kind.WARNING, supertypeElement.getSimpleName());
+        }
+
+        messager.printMessage(Diagnostic.Kind.WARNING, element.getSimpleName());
+    }
+
+    // get annotation values
+    private void storeAnnotationValues(Element element) {
+        TypeElement typeElement = (TypeElement) element;
+        AdapterAnnotation annotation = typeElement.getAnnotation(AdapterAnnotation.class);
+        adapterClassName = annotation.adapterClassName();
+        layoutId = annotation.layoutId();
+
+        messager.printMessage(Diagnostic.Kind.WARNING, adapterClassName);
+        messager.printMessage(Diagnostic.Kind.WARNING, String.valueOf(layoutId));
+
+        listItemTypeTypeMirror = null;
+        listItemClass = null;
+        try {
+            listItemClass = annotation.itemType();
+            qualifiedSuperClassName = listItemClass.getCanonicalName();
+            simpleTypeName = listItemClass.getSimpleName();
+        } catch (MirroredTypeException mte) {
+            DeclaredType classTypeMirror = (DeclaredType) mte.getTypeMirror();
+            listItemTypeTypeMirror = mte.getTypeMirror();
+            TypeElement classTypeElement = (TypeElement) classTypeMirror.asElement();
+            qualifiedSuperClassName = classTypeElement.getQualifiedName().toString();
+            simpleTypeName = classTypeElement.getSimpleName().toString();
+        }
+
+        viewHolderTypeMirror = null;
+        viewHolderClass = null;
+        try {
+            viewHolderClass = annotation.viewHolderClass();
+        } catch (MirroredTypeException mte) {
+            viewHolderTypeMirror = mte.getTypeMirror();
+        }
+
+        messager.printMessage(Diagnostic.Kind.WARNING, qualifiedSuperClassName);
+        messager.printMessage(Diagnostic.Kind.WARNING, simpleTypeName);
+    }
+
     @Override
     public boolean process(Set<? extends TypeElement> set, RoundEnvironment roundEnvironment) {
         try {
@@ -115,57 +174,20 @@ public class AdapterProcessor extends AbstractProcessor {
                 }
 
                 // get supertype
-                TypeMirror typeMirror = element.asType();
-                List<? extends TypeMirror> mirrors = typeUtils.directSupertypes(typeMirror);
-                for (TypeMirror mirror : mirrors) {
-                    DeclaredType declared = (DeclaredType)mirror; //you should of course check this is possible first
-                    Element supertypeElement = declared.asElement();
-                    System.out.println( "Supertype name: " + supertypeElement.getSimpleName() );
-                    messager.printMessage(Diagnostic.Kind.WARNING, supertypeElement.getSimpleName());
-                }
+                logSuperType(element);
 
-                messager.printMessage(Diagnostic.Kind.WARNING, element.getSimpleName());
+                // capture annotation values
+                storeAnnotationValues(element);
 
-                String string = element.getSimpleName().toString();
-                if (string.contains("Activity")) {
-                    prefix = string.replace("Activity", "");
-                } else if (string.contains("Fragment")) {
-                    prefix = string.replace("Fragment", "");
-                }
+                // generate AdapterClassName
+                generateAdapterClassName(element);
 
-                // get annotation values
-                TypeElement typeElement = (TypeElement) element;
-                AdapterAnnotation annotation = typeElement.getAnnotation(AdapterAnnotation.class);
-                String adapterClassName = annotation.adapterClassName();
-                int layoutId = annotation.layoutId();
+                // Adapter Class Type
+                ClassName adapterClassType = ClassName.get("ir.mohsenafshar.adapters", adapterClassName);
 
-                messager.printMessage(Diagnostic.Kind.WARNING, adapterClassName);
-                messager.printMessage(Diagnostic.Kind.WARNING, String.valueOf(layoutId));
-
-                TypeMirror listItemTypeTypeMirror = null;
-                Class<?> listItemClass = null;
-                try {
-                    listItemClass = annotation.itemType();
-                    qualifiedSuperClassName = listItemClass.getCanonicalName();
-                    simpleTypeName = listItemClass.getSimpleName();
-                } catch (MirroredTypeException mte) {
-                    DeclaredType classTypeMirror = (DeclaredType) mte.getTypeMirror();
-                    listItemTypeTypeMirror = mte.getTypeMirror();
-                    TypeElement classTypeElement = (TypeElement) classTypeMirror.asElement();
-                    qualifiedSuperClassName = classTypeElement.getQualifiedName().toString();
-                    simpleTypeName = classTypeElement.getSimpleName().toString();
-                }
-
-                TypeMirror viewHolderTypeMirror = null;
-                Class<?> viewHolderClass = null;
-                try {
-                    viewHolderClass = annotation.viewHolderClass();
-                } catch (MirroredTypeException mte) {
-                    viewHolderTypeMirror = mte.getTypeMirror();
-                }
-
-                messager.printMessage(Diagnostic.Kind.WARNING, qualifiedSuperClassName);
-                messager.printMessage(Diagnostic.Kind.WARNING, simpleTypeName);
+                // Builder Class Type
+                String className = adapterClassName + "." + "Builder";
+                ClassName builderClassType = ClassName.get("ir.mohsenafshar.adapters", className);
 
                 // List<T>
                 TypeName parameterizedItemListTypeName = ParameterizedTypeName.get(list,
@@ -175,7 +197,7 @@ public class AdapterProcessor extends AbstractProcessor {
                 TypeName adapterParametrized = ParameterizedTypeName.get(classAdapter,
                         viewHolderClass == null ? ClassName.get(viewHolderTypeMirror) : ClassName.get(viewHolderClass));
 
-                // Class
+                // Adapter Class Type
                 TypeSpec.Builder classBuilder = TypeSpec.classBuilder(adapterClassName)
                         .addModifiers(Modifier.PUBLIC)
                         .superclass(adapterParametrized);
@@ -196,25 +218,15 @@ public class AdapterProcessor extends AbstractProcessor {
                         .addStatement("itemList = $L", "list");
                 classBuilder.addMethod(constructor2.build());
 
-                // Field List
-                FieldSpec missingFeatures = FieldSpec.builder(parameterizedItemListTypeName, "itemList")
-                        .addModifiers(Modifier.PRIVATE)
-                        .initializer("new $T<>()", arrayList)
-                        .build();
-                classBuilder.addField(missingFeatures);
-
+                // Field List<listItemClass>
+                FieldSpec itemListField = createItemListField(parameterizedItemListTypeName);
+                classBuilder.addField(itemListField);
 
                 // ClickListener Field
-                FieldSpec builderItemClick = FieldSpec.builder(itemClickClass, "itemClickListener")
-                        .addModifiers(Modifier.PRIVATE)
-                        .build();
-                classBuilder.addField(builderItemClick);
+                classBuilder.addField(clickListenerField());
 
                 // LongClickListener Field
-                FieldSpec builderLongItemClick = FieldSpec.builder(itemLongClass, "itemLongClickListener")
-                        .addModifiers(Modifier.PRIVATE)
-                        .build();
-                classBuilder.addField(builderLongItemClick);
+                classBuilder.addField(longClickListenerField());
 
                 // public MyViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType)
                 MethodSpec createViewHolder = MethodSpec.methodBuilder("onCreateViewHolder")
@@ -239,7 +251,7 @@ public class AdapterProcessor extends AbstractProcessor {
                         .build();
                 classBuilder.addMethod(bindViewHolder);
 
-                // public int getItemCount() {
+                // public int getItemCount()
                 MethodSpec getItemCount = MethodSpec.methodBuilder("getItemCount")
                         .addAnnotation(classOverrideAnnotation)
                         .addModifiers(Modifier.PUBLIC)
@@ -259,34 +271,20 @@ public class AdapterProcessor extends AbstractProcessor {
                         .addStatement("this.itemList = itemList");
                 innerClassBuilder.addMethod(innerClassConstructor.build());
 
-                // Builder List Field
-                FieldSpec builderListField = FieldSpec.builder(parameterizedItemListTypeName, "itemList")
-                        .addModifiers(Modifier.PRIVATE)
-                        .initializer("new $T<>()", arrayList)
-                        .build();
+                // Builder: List Field
+                FieldSpec builderListField = createItemListField(parameterizedItemListTypeName);
                 innerClassBuilder.addField(builderListField);
 
 
-                // Builder ClickListener Field
-                /*FieldSpec builderItemClick = FieldSpec.builder(itemClickClass, "itemClickListener")
-                        .addModifiers(Modifier.PRIVATE)
-                        .build();*/
-                innerClassBuilder.addField(builderItemClick);
+                // Builder: ClickListener Field
+                innerClassBuilder.addField(clickListenerField());
 
 
-                // Builder LongClickListener Field
-                /*FieldSpec builderLongItemClick = FieldSpec.builder(itemClickClass, "itemLongClickListener")
-                        .addModifiers(Modifier.PRIVATE)
-                        .build();*/
-                innerClassBuilder.addField(builderLongItemClick);
+                // Builder: LongClickListener Field
+                innerClassBuilder.addField(longClickListenerField());
 
 
-                // Builder Class Type
-                String className = adapterClassName + "." + "Builder";
-                ClassName builderClassType = ClassName.get("ir.mohsenafshar.adapters", className);
-
-
-                // ClickListener
+                // Builder: ClickListener
                 MethodSpec setItemClickListener = MethodSpec.methodBuilder("setItemClickListener")
                         .addModifiers(Modifier.PUBLIC)
                         .addParameter(itemClickClass, "itemClickListener")
@@ -296,7 +294,7 @@ public class AdapterProcessor extends AbstractProcessor {
                 innerClassBuilder.addMethod(setItemClickListener);
 
 
-                // LongClickListener
+                // Builder: LongClickListener Method
                 MethodSpec setItemLongClickListener = MethodSpec.methodBuilder("setItemLongClickListener")
                         .addModifiers(Modifier.PUBLIC)
                         .addParameter(itemLongClass, "itemLongClickListener")
@@ -305,10 +303,7 @@ public class AdapterProcessor extends AbstractProcessor {
                         .addStatement("return this").build();
                 innerClassBuilder.addMethod(setItemLongClickListener);
 
-
-                // Adapter Class Type
-                ClassName adapterClassType = ClassName.get("ir.mohsenafshar.adapters", adapterClassName);
-
+                // Builder: build Method
                 MethodSpec build = MethodSpec.methodBuilder("build")
                         .addModifiers(Modifier.PUBLIC)
                         .returns(adapterClassType)
@@ -336,5 +331,40 @@ public class AdapterProcessor extends AbstractProcessor {
             e.printStackTrace();
         }
         return true;
+    }
+
+    private FieldSpec longClickListenerField() {
+        return FieldSpec.builder(itemLongClass, "itemLongClickListener")
+                            .addModifiers(Modifier.PRIVATE)
+                            .build();
+    }
+
+    private FieldSpec clickListenerField() {
+        return FieldSpec.builder(itemClickClass, "itemClickListener")
+                            .addModifiers(Modifier.PRIVATE)
+                            .build();
+    }
+
+    private FieldSpec createItemListField(TypeName parameterizedItemListTypeName) {
+        return FieldSpec.builder(parameterizedItemListTypeName, "itemList")
+                .addModifiers(Modifier.PRIVATE)
+                .initializer("new $T<>()", arrayList)
+                .build();
+    }
+
+    // generate AdapterClassName
+    private void generateAdapterClassName(Element element) {
+        String string = element.getSimpleName().toString();
+        if (string.contains("Activity")) {
+            prefix = string.replace("Activity", "");
+        } else if (string.contains("Fragment")) {
+            prefix = string.replace("Fragment", "");
+        }
+
+        if (adapterClassName.equals("adptr")) {
+            adapterClassName = prefix + "Adapter";
+        }
+
+        messager.printMessage(Diagnostic.Kind.WARNING, prefix);
     }
 }

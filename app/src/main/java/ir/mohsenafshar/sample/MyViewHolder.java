@@ -5,23 +5,14 @@ import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import ir.mohsenafshar.listener.ItemClickListener;
-import ir.mohsenafshar.listener.ItemLongClickListener;
+import ir.mohsenafshar.viewholder.BaseViewHolder;
 
-public class MyViewHolder extends RecyclerView.ViewHolder {
+public class MyViewHolder extends BaseViewHolder {
     public MyViewHolder(@NonNull View itemView) {
         super(itemView);
     }
 
     public void bind(String item, int position) {
-
-    }
-
-    public void setClickListener(ItemClickListener clickListener) {
-
-    }
-
-    public void setLongClickListener(ItemLongClickListener longClickListener) {
 
     }
 }

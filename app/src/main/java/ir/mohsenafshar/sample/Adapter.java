@@ -11,6 +11,7 @@ import java.util.ArrayList;
 
 import ir.mohsenafshar.listener.ItemClickListener;
 import ir.mohsenafshar.listener.ItemLongClickListener;
+import ir.mohsenafshar.viewholder.BaseViewHolder;
 
 public class Adapter extends RecyclerView.Adapter<MyViewHolder> {
 
@@ -28,6 +29,7 @@ public class Adapter extends RecyclerView.Adapter<MyViewHolder> {
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_list, parent, false);
         return new MyViewHolder(view);
     }
+
 
     @Override
     public void onBindViewHolder(@NonNull MyViewHolder holder, int position) {

@@ -1,5 +1,6 @@
 package ir.mohsenafshar.sample
 
+import ir.mohsenafshar.viewholder.BaseViewHolder
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 
