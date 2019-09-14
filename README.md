@@ -3,8 +3,11 @@
 ### Usage :
 
 ```
+// @Param adapterClassName : Optional, if not provided, the generated Adapter class name will be 
+// [Adapter + Name of component without Activity, Fragment or Dialog keyword
+// In this case , the adapter class name will be SampleAdapter
 @AdapterAnnotation(
-//        adapterClassName = "MyAdapter",
+        // adapterClassName = "MyAdapter",         
         itemType = String.class,
         viewHolderClass = MyViewHolder.class,
         layoutId = R.layout.item_list)
